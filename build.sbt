@@ -27,7 +27,7 @@ lazy val slick = (project in file("slick"))
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= Seq(
-      "com.typesafe.slick" %% "slick" % "3.2.1"
+      "com.typesafe.slick" %% "slick" % "3.3.3"
     )
   )
   .dependsOn(common)

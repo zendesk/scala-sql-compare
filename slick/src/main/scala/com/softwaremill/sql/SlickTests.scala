@@ -57,7 +57,7 @@ trait Queries extends Schema {
   import jdbcProfile.api._
 
   def insertWithGeneratedId(): Future[Unit] = {
-    val insertQuery = (cities returning cities.map(_.id)) += City(CityId(0), "New York", 19795791, 141300, None)
+    val insertQuery = cities.returning(cities.map(_.id)) += City(CityId(0), "New York", 19795791, 141300, None)
     db.run(insertQuery).map { r =>
       println(s"Inserted, generated id: $r")
       println()
@@ -79,7 +79,7 @@ trait Queries extends Schema {
     case class MetroSystemWithCity(metroSystemName: String, cityName: String, dailyRidership: Int)
 
     val sqlQuery = (for {
-      (ms, c) <- metroSystems join cities on (_.cityId === _.id)
+      (ms, c) <- metroSystems.join(cities).on(_.cityId === _.id)
     } yield (ms.name, c.name, ms.dailyRidership)).result
 
     val query = sqlQuery.map(_.map(MetroSystemWithCity.tupled))
@@ -88,33 +88,45 @@ trait Queries extends Schema {
   }
 
   def selectMetroLinesSortedByStations(): Future[Unit] = {
-    case class MetroLineWithSystemCityNames(metroLineName: String, metroSystemName: String, cityName: String, stationCount: Int)
+    case class MetroLineWithSystemCityNames(
+      metroLineName: String,
+      metroSystemName: String,
+      cityName: String,
+      stationCount: Int,
+    )
 
     // could use lifted case classes to avoid the _2, _4: http://slick.lightbend.com/doc/3.0.0/userdefined.html#monomorphic-case-classes
     val sqlQuery = (for {
       ((ml, ms), c) <- metroLines
-        .join(metroSystems).on(_.systemId === _.id)
-        .join(cities).on(_._2.cityId === _.id)
+        .join(metroSystems)
+        .on(_.systemId === _.id)
+        .join(cities)
+        .on(_._2.cityId === _.id)
     } yield (ml.name, ms.name, c.name, ml.stationCount)).sortBy(_._4.desc).result
 
-    /*
-    Alternatively:
-    val sqlQuery = (for {
+    val sqlQueryAlternative = (for {
       ml <- metroLines
       ms <- metroSystems if ms.id === ml.systemId
       c <- cities if c.id === ms.cityId
     } yield (ml.name, ms.name, c.name, ml.stationCount)).sortBy(_._4.desc).result
-    */
 
     val query = sqlQuery.map(_.map(MetroLineWithSystemCityNames.tupled))
+    val sameQuery = sqlQueryAlternative.map(_.map(MetroLineWithSystemCityNames.tupled))
 
     runAndLogResults("Metro lines sorted by station count", sqlQuery, query)
+    runAndLogResults(
+      "Metro lines sorted by station count (query using for-comprehension)",
+      sqlQueryAlternative,
+      sameQuery,
+    )
   }
 
   // we can extract and re-use common joins
   lazy val joinLinesToSystemsAndCities = metroLines
-    .join(metroSystems).on(_.systemId === _.id)
-    .join(cities).on(_._2.cityId === _.id)
+    .join(metroSystems)
+    .on(_.systemId === _.id)
+    .join(cities)
+    .on(_._2.cityId === _.id)
 
   def selectMetroSystemsWithMostLines(): Future[Unit] = {
     case class MetroSystemWithLineCount(metroSystemName: String, cityName: String, lineCount: Int)
@@ -132,20 +144,31 @@ trait Queries extends Schema {
 
   // one-to-many
   def selectCitiesWithSystemsAndLines(): Future[Unit] = {
-    case class CityWithSystems(id: CityId, name: String, population: Int, area: Float, link: Option[String], systems: Seq[MetroSystemWithLines])
+    case class CityWithSystems(
+      id: CityId,
+      name: String,
+      population: Int,
+      area: Float,
+      link: Option[String],
+      systems: Seq[MetroSystemWithLines],
+    )
     case class MetroSystemWithLines(id: MetroSystemId, name: String, dailyRidership: Int, lines: Seq[MetroLine])
 
     val sqlQuery = joinLinesToSystemsAndCities.result
 
-    val query = sqlQuery.map(_
-      .groupBy(_._2)
-      .map { case (c, linesSystemsCities) =>
-        val systems = linesSystemsCities.map(_._1).groupBy(_._2)
-            .map { case (s, linesSystems) =>
-            MetroSystemWithLines(s.id, s.name, s.dailyRidership, linesSystems.map(_._1))
+    val query = sqlQuery
+      .map(
+        _.groupBy(_._2)
+          .map { case (c, linesSystemsCities) =>
+            val systems = linesSystemsCities
+              .map(_._1)
+              .groupBy(_._2)
+              .map { case (s, linesSystems) =>
+                MetroSystemWithLines(s.id, s.name, s.dailyRidership, linesSystems.map(_._1))
+              }
+            CityWithSystems(c.id, c.name, c.population, c.area, c.link, systems.toSeq)
           }
-        CityWithSystems(c.id, c.name, c.population, c.area, c.link, systems.toSeq)
-      })
+      )
       .map(_.toSeq)
 
     runAndLogResults("Cities with list of systems with list of lines", sqlQuery, query)
@@ -161,7 +184,7 @@ trait Queries extends Schema {
       .filter { line =>
         List(
           minStations.map(line.stationCount >= _),
-          maxStations.map(line.stationCount <= _)
+          maxStations.map(line.stationCount <= _),
         ).flatten.reduceLeftOption(_ && _).getOrElse(true: LiteralColumn[Boolean])
       }
       .sortBy(l => if (sortDesc) l.stationCount.desc else l.stationCount.asc)
@@ -173,7 +196,8 @@ trait Queries extends Schema {
   def plainSql(): Future[Unit] = {
     case class MetroSystemWithCity(metroSystemName: String, cityName: String, dailyRidership: Int)
 
-    implicit val getMetroSystemWithCityResult = GetResult(r => MetroSystemWithCity(r.nextString, r.nextString, r.nextInt))
+    implicit val getMetroSystemWithCityResult: GetResult[MetroSystemWithCity] =
+      GetResult(r => MetroSystemWithCity(r.nextString, r.nextString, r.nextInt))
 
     val query = sql"""SELECT ms.name, c.name, ms.daily_ridership
                              FROM metro_system as ms
@@ -198,11 +222,16 @@ trait Queries extends Schema {
 
     runAndLogResults("Type checked plain sql", query)
   }
-  */
+   */
 
   def transactions(): Future[Unit] = {
-    def insertCity(name: String, population: Int, area: Float, link: Option[String]): DBIOAction[CityId, NoStream, Write] =
-      (cities returning cities.map(_.id)) += City(CityId(0), name, population, area, link)
+    def insertCity(
+      name: String,
+      population: Int,
+      area: Float,
+      link: Option[String],
+    ): DBIOAction[CityId, NoStream, Write] =
+      cities.returning(cities.map(_.id)) += City(CityId(0), name, population, area, link)
 
     def deleteCity(id: CityId): DBIOAction[Int, NoStream, Write] =
       cities.filter(_.id === id).delete
@@ -221,10 +250,13 @@ trait Queries extends Schema {
     }
   }
 
-  /**
-    * @param sqlQuery The "raw" sql query (without result mapping) is needed to log the generated SQL.
+  /** @param sqlQuery The "raw" sql query (without result mapping) is needed to log the generated SQL.
     */
-  private def runAndLogResults[R](label: String, sqlQuery: SqlAction[Seq[R], NoStream, _], query: DBIOAction[Seq[R], NoStream, _]): Future[Unit] = {
+  private def runAndLogResults[R](
+    label: String,
+    sqlQuery: SqlAction[Seq[R], NoStream, _],
+    query: DBIOAction[Seq[R], NoStream, _],
+  ): Future[Unit] = {
     db.run(query).map { r =>
       println(label)
       r.foreach(println)
@@ -246,7 +278,7 @@ trait Queries extends Schema {
 object SlickTests extends App with Schema with DbSetup with Queries {
   dbSetup()
 
-  val db = Database.forURL(connectionString, user = "postgres", password = "postgres",  driver = "org.postgresql.Driver")
+  val db = Database.forURL(connectionString, user = "postgres", password = "postgres", driver = "org.postgresql.Driver")
   val jdbcProfile = PostgresProfile
 
   try {
