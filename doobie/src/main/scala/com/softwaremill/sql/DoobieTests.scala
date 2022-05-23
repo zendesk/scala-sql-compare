@@ -4,19 +4,19 @@ import com.softwaremill.sql.TrackType.TrackType
 import doobie._
 import doobie.implicits._
 import cats.effect.IO
+import cats.effect.unsafe.implicits.global
 
 object DoobieTests extends App with DbSetup {
   dbSetup()
 
-  val xa = Transactor.fromDriverManager[IO](
-    "org.postgresql.Driver", "jdbc:postgresql:sql_compare", null, null)
+  val xa =
+    Transactor.fromDriverManager[IO]("org.postgresql.Driver", "jdbc:postgresql:sql_compare", "postgres", "postgres")
 
-  implicit val trackTypeMeta: Meta[TrackType] =
-    Meta[Int].xmap(TrackType.byIdOrThrow, _.id)
+  implicit val trackTypeMeta: Meta[TrackType] = Meta[Int].timap(TrackType.byIdOrThrow)(_.id)
 
   def insertCity(name: String, population: Int, area: Float, link: Option[String]): ConnectionIO[City] = {
-    sql"insert into city(name, population, area, link) values ($name, $population, $area, $link)"
-      .update.withUniqueGeneratedKeys[CityId]("id")
+    sql"insert into city(name, population, area, link) values ($name, $population, $area, $link)".update
+      .withUniqueGeneratedKeys[CityId]("id")
       .map(id => City(id, name, population, area, link))
   }
 
@@ -55,15 +55,21 @@ object DoobieTests extends App with DbSetup {
   def selectMetroSystemsWithCityNames(): Unit = {
     case class MetroSystemWithCity(metroSystemName: String, cityName: String, dailyRidership: Int)
 
-    val program = sql"select ms.name, c.name, ms.daily_ridership from metro_system as ms left join city as c on ms.city_id = c.id"
-      .query[MetroSystemWithCity]
-      .to[List]
+    val program =
+      sql"select ms.name, c.name, ms.daily_ridership from metro_system as ms left join city as c on ms.city_id = c.id"
+        .query[MetroSystemWithCity]
+        .to[List]
 
     runAndLogResults("Metro systems with city names", program)
   }
 
   def selectMetroLinesSortedByStations(): Unit = {
-    case class MetroLineWithSystemCityNames(metroLineName: String, metroSystemName: String, cityName: String, stationCount: Int)
+    case class MetroLineWithSystemCityNames(
+      metroLineName: String,
+      metroSystemName: String,
+      cityName: String,
+      stationCount: Int,
+    )
 
     val program = sql"""
       SELECT ml.name, ms.name, c.name, ml.station_count
@@ -92,7 +98,14 @@ object DoobieTests extends App with DbSetup {
   }
 
   def selectCitiesWithSystemsAndLines(): Unit = {
-    case class CityWithSystems(id: CityId, name: String, population: Int, area: Float, link: Option[String], systems: Seq[MetroSystemWithLines])
+    case class CityWithSystems(
+      id: CityId,
+      name: String,
+      population: Int,
+      area: Float,
+      link: Option[String],
+      systems: Seq[MetroSystemWithLines],
+    )
     case class MetroSystemWithLines(id: MetroSystemId, name: String, dailyRidership: Int, lines: Seq[MetroLine])
 
     val program = sql"""
@@ -104,9 +117,11 @@ object DoobieTests extends App with DbSetup {
       .query[(City, MetroSystem, MetroLine)]
       .to[List]
       .map { results =>
-        results.groupBy(_._1)
+        results
+          .groupBy(_._1)
           .map { case (c, citiesSystemsLines) =>
-            val systems = citiesSystemsLines.groupBy(_._2)
+            val systems = citiesSystemsLines
+              .groupBy(_._2)
               .map { case (s, systemsLines) =>
                 MetroSystemWithLines(s.id, s.name, s.dailyRidership, systemsLines.map(_._3))
               }
@@ -127,7 +142,8 @@ object DoobieTests extends App with DbSetup {
 
     val minStationsFr = minStations.map(m => fr"station_count >= $m")
     val maxStationsFr = maxStations.map(m => fr"station_count <= $m")
-    val whereFr = List(minStationsFr, maxStationsFr).flatten.reduceLeftOption(_ ++ _)
+    val whereFr = List(minStationsFr, maxStationsFr).flatten
+      .reduceLeftOption(_ ++ _)
       .map(reduced => fr"where" ++ reduced)
       .getOrElse(fr"")
 
