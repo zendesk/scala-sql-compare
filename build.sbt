@@ -6,7 +6,7 @@ name := "scala-sql-compare"
 lazy val commonSettings = Seq(
   organization := "com.softwaremill",
   version := "1.0-SNAPSHOT",
-  scalaVersion := "2.12.15"
+  scalaVersion := "2.12.15",
 )
 
 lazy val scalaSqlCompare = (project in file("."))
@@ -46,7 +46,7 @@ lazy val quill = (project in file("quill"))
   .settings(
     libraryDependencies ++= Seq(
       "ch.qos.logback" % "logback-classic" % "1.2.3",
-      "io.getquill" %% "quill-async-postgres" % "2.3.2"
+      "io.getquill" %% "quill-async-postgres" % "3.12.0",
     )
   )
   .dependsOn(common)
@@ -57,7 +57,7 @@ lazy val scalikejdbc = (project in file("scalikejdbc"))
     libraryDependencies ++= Seq(
       "org.scalikejdbc" %% "scalikejdbc" % "3.2.1",
       "org.scalikejdbc" %% "scalikejdbc-syntax-support-macro" % "3.2.1",
-      "ch.qos.logback" % "logback-classic" % "1.2.3"
+      "ch.qos.logback" % "logback-classic" % "1.2.3",
     )
   )
   .dependsOn(common)
@@ -70,8 +70,8 @@ lazy val ziosql = (project in file("ziosql"))
       "dev.zio" %% "zio" % "2.0.0-RC2",
       "dev.zio" %% "zio-schema" % "0.1.7",
       "dev.zio" %% "zio-schema-derivation" % "0.1.7",
-      "org.postgresql"     % "postgresql"                      % "42.2.24"                  % Compile,
-      "com.dimafeng"      %% "testcontainers-scala-postgresql" % "0.39.12"
+      "org.postgresql" % "postgresql" % "42.2.24" % Compile,
+      "com.dimafeng" %% "testcontainers-scala-postgresql" % "0.39.12",
     )
   )
   .dependsOn(common)

@@ -1,10 +1,10 @@
 package com.softwaremill.sql
 
 import com.softwaremill.sql.TrackType.TrackType
-import io.getquill.{PostgresAsyncContext, SnakeCase}
+import io.getquill.{Ord, PostgresAsyncContext, Query, SnakeCase}
 
 import scala.concurrent.{Await, ExecutionContext, Future}
-import scala.concurrent.ExecutionContext.Implicits.{ global => ec } // making tx-scoped ECs work
+import scala.concurrent.ExecutionContext.Implicits.{global => ec}
 import scala.concurrent.duration._
 
 object QuillTests extends App with DbSetup {
@@ -14,8 +14,8 @@ object QuillTests extends App with DbSetup {
 
   import ctx._
 
-  implicit val encodeTrackType = MappedEncoding[TrackType, Int](_.id)
-  implicit val decodeTrackType = MappedEncoding[Int, TrackType](TrackType.byIdOrThrow)
+  implicit val encodeTrackType: MappedEncoding[TrackType, Index] = MappedEncoding[TrackType, Int](_.id)
+  implicit val decodeTrackType: MappedEncoding[Index, TrackType] = MappedEncoding[Int, TrackType](TrackType.byIdOrThrow)
 
   // note: we can use pure case classes, except for embedded values, which need to extend Embedded
 
@@ -44,7 +44,7 @@ object QuillTests extends App with DbSetup {
       querySchema[MetroLine](
         "metro_line",
         _.id -> "id", // not all columns have to be specified
-        _.stationCount -> "station_count"
+        _.stationCount -> "station_count",
       )
     }
 
@@ -82,14 +82,20 @@ object QuillTests extends App with DbSetup {
 
   def selectMetroLinesSortedByStations(): Future[Unit] = {
     case class MetroLineWithSystemCityNames(
-      metroLineName: String, metroSystemName: String, cityName: String, stationCount: Int)
+      metroLineName: String,
+      metroSystemName: String,
+      cityName: String,
+      stationCount: Int,
+    )
 
     // other joins (using for comprehensions cause compile errors)
     val q = quote {
       (for {
         ((ml, ms), c) <- query[MetroLine]
-          .join(query[MetroSystem]).on(_.systemId == _.id)
-          .join(query[City]).on(_._2.cityId == _.id)
+          .join(query[MetroSystem])
+          .on(_.systemId == _.id)
+          .join(query[City])
+          .on(_._2.cityId == _.id)
       } yield MetroLineWithSystemCityNames(ml.name, ms.name, c.name, ml.stationCount)).sortBy(_.stationCount)(Ord.desc)
     }
 
@@ -104,12 +110,15 @@ object QuillTests extends App with DbSetup {
     val q = quote {
       (for {
         ((ml, ms), c) <- query[MetroLine]
-          .join(query[MetroSystem]).on(_.systemId == _.id)
-          .join(query[City]).on(_._2.cityId == _.id)
+          .join(query[MetroSystem])
+          .on(_.systemId == _.id)
+          .join(query[City])
+          .on(_._2.cityId == _.id)
+        // Work with update lib version
         /* Causes a run-time error:
         (ml, ms) <- query[MetroLine].join(query[MetroSystem]).on(_.systemId == _.id)
         c <- query[City].join(_.id == ms.cityId)
-        */
+         */
       } yield (ml, ms, c))
         .groupBy { case (ml, ms, c) => (ms.id, c.id, ms.name, c.name) }
         .map { case ((msId, cId, msName, cName), aggregated) =>
@@ -123,26 +132,39 @@ object QuillTests extends App with DbSetup {
   }
 
   def selectCitiesWithSystemsAndLines(): Future[Unit] = {
-    case class CityWithSystems(id: CityId, name: String, population: Int, area: Float, link: Option[String], systems: Seq[MetroSystemWithLines])
+    case class CityWithSystems(
+      id: CityId,
+      name: String,
+      population: Int,
+      area: Float,
+      link: Option[String],
+      systems: Seq[MetroSystemWithLines],
+    )
     case class MetroSystemWithLines(id: MetroSystemId, name: String, dailyRidership: Int, lines: Seq[MetroLine])
 
     val q = quote {
       for {
         ((ml, ms), c) <- query[MetroLine]
-          .join(query[MetroSystem]).on(_.systemId == _.id)
-          .join(query[City]).on(_._2.cityId == _.id)
+          .join(query[MetroSystem])
+          .on(_.systemId == _.id)
+          .join(query[City])
+          .on(_._2.cityId == _.id)
       } yield (ml, ms, c)
     }
 
-    val result = ctx.run(q).map(_
-      .groupBy(_._3)
-      .map { case (c, linesSystemsCities) =>
-        val systems = linesSystemsCities.groupBy(_._2)
-          .map { case (s, linesSystems) =>
-            MetroSystemWithLines(s.id, s.name, s.dailyRidership, linesSystems.map(_._1))
+    val result = ctx
+      .run(q)
+      .map(
+        _.groupBy(_._3)
+          .map { case (c, linesSystemsCities) =>
+            val systems = linesSystemsCities
+              .groupBy(_._2)
+              .map { case (s, linesSystems) =>
+                MetroSystemWithLines(s.id, s.name, s.dailyRidership, linesSystems.map(_._1))
+              }
+            CityWithSystems(c.id, c.name, c.population, c.area, c.link, systems.toSeq)
           }
-        CityWithSystems(c.id, c.name, c.population, c.area, c.link, systems.toSeq)
-      })
+      )
       .map(_.toSeq)
 
     logResults("Cities with list of systems with list of lines", result)
@@ -153,18 +175,26 @@ object QuillTests extends App with DbSetup {
     val maxStations: Option[Int] = None
     val sortDesc: Boolean = true
 
-    val allFilter = quote {
-      (ml: MetroLine) => true
+    val allFilter = quote { (_: MetroLine) =>
+      true
     }
-    val minFilter = minStations.map(limit => quote {
-      (ml: MetroLine) => ml.stationCount >= lift(limit)
-    }).getOrElse(allFilter)
+    val minFilter = minStations
+      .map { limit =>
+        quote { (ml: MetroLine) =>
+          ml.stationCount >= lift(limit)
+        }
+      }
+      .getOrElse(allFilter)
 
-    val maxFilter = maxStations.map(limit => quote {
-      (ml: MetroLine) => ml.stationCount <= lift(limit)
-    }).getOrElse(allFilter)
+    val maxFilter = maxStations
+      .map { limit =>
+        quote { (ml: MetroLine) =>
+          ml.stationCount <= lift(limit)
+        }
+      }
+      .getOrElse(allFilter)
 
-    val sortOrder = if (sortDesc) quote { Ord.desc[Int] } else quote { Ord.asc[Int] }
+    val sortOrder = if (sortDesc) quote(Ord.desc[Int]) else quote(Ord.asc[Int])
 
     val q = quote {
       query[MetroLine]
@@ -177,7 +207,7 @@ object QuillTests extends App with DbSetup {
 
   def plainSql(): Future[Unit] = {
     case class MetroSystemWithCity(metroSystemName: String, cityName: String, dailyRidership: Int)
-    
+
     val q = quote {
       infix"""SELECT ms.name as metro_system_name, c.name as city_name, ms.daily_ridership as daily_ridership
         FROM metro_system as ms
@@ -191,9 +221,11 @@ object QuillTests extends App with DbSetup {
   }
 
   def transactions(): Future[Unit] = {
-    def insert(c: City)(implicit ec: ExecutionContext): Future[City] = ctx.run {
-      query[City].insert(lift(c)).returning(_.id)
-    }.map(id => c.copy(id = id))
+    def insert(c: City)(implicit ec: ExecutionContext): Future[City] = ctx
+      .run {
+        query[City].insert(lift(c)).returning(_.id)
+      }
+      .map(id => c.copy(id = id))
 
     def delete(id: CityId)(implicit ec: ExecutionContext): Future[Long] = ctx.run {
       query[City].filter(_.id == lift(id)).delete
@@ -202,7 +234,7 @@ object QuillTests extends App with DbSetup {
     println("Transactions")
     ctx.transaction { implicit ec =>
       for {
-        inserted <- insert(City(CityId(0), "Invalid", 0, 0, None))
+        inserted <- insert(City(CityId(123), "Invalid", 0, 0, None))
         deleted <- delete(inserted.id)
       } yield {
         println(s"Deleted $deleted rows")
@@ -212,16 +244,18 @@ object QuillTests extends App with DbSetup {
   }
 
   def transactionsIO(): Future[Unit] = {
-    def insert(c: City)(implicit ec: ExecutionContext): IO[City, Effect.Write] = ctx.runIO {
-      query[City].insert(lift(c)).returning(_.id)
-    }.map(id => c.copy(id = id))
+    def insert(c: City)(implicit ec: ExecutionContext): IO[City, Effect.Write] = ctx
+      .runIO {
+        query[City].insert(lift(c)).returning(_.id)
+      }
+      .map(id => c.copy(id = id))
 
     def delete(id: CityId)(implicit ec: ExecutionContext): IO[Long, Effect.Write] = ctx.runIO {
       query[City].filter(_.id == lift(id)).delete
     }
 
     val combined = for {
-      inserted <- insert(City(CityId(0), "Invalid", 0, 0, None))
+      inserted <- insert(City(CityId(124), "Invalid", 0, 0, None))
       deleted <- delete(inserted.id)
     } yield {
       println(s"Deleted $deleted rows")
