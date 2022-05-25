@@ -8,7 +8,7 @@ import scalikejdbc._
 object ScalikejdbcTests extends App with DbSetup {
   dbSetup()
 
-  ConnectionPool.add('tests, "jdbc:postgresql:sql_compare", "postgres", "")
+  ConnectionPool.add('tests, "jdbc:postgresql:sql_compare", "postgres", "postgres")
   def db: NamedDB = NamedDB('tests)
 
   GlobalSettings.loggingSQLAndTime = LoggingSQLAndTimeSettings(enabled = true, singleLineMode = true, logLevel = 'INFO)
@@ -62,7 +62,13 @@ object ScalikejdbcTests extends App with DbSetup {
 
   //
 
-  def insertCity(name: String, population: Int, area: Float, link: Option[String])(implicit session: DBSession): City = {
+  def insertCity(
+    name: String,
+    population: Int,
+    area: Float,
+    link: Option[String],
+  )(implicit session: DBSession
+  ): City = {
     // We can use sql interpolation:
     // val id = sql"insert into city(name, population, area, link) values ($name, $population, $area, $link)"
     //   .updateAndReturnGeneratedKey().apply()
@@ -70,12 +76,14 @@ object ScalikejdbcTests extends App with DbSetup {
 
     val c = citySQL.column
     val id = withSQL {
-      insert.into(citySQL).namedValues(
-        c.name -> name, // dynamic
-        c.population -> population,
-        c.area -> area,
-        c.link -> link
-      )
+      insert
+        .into(citySQL)
+        .namedValues(
+          c.name -> name, // dynamic
+          c.population -> population,
+          c.area -> area,
+          c.link -> link,
+        )
     }.updateAndReturnGeneratedKey().apply() // generated ids are assumed to be Long-s
 
     City(CityId(id.toInt), name, population, area, link)
@@ -92,7 +100,7 @@ object ScalikejdbcTests extends App with DbSetup {
   def selectAll(): Unit = {
     val c = citySQL.syntax("c")
     val p = withSQL {
-      select.from(citySQL as c)
+      select.from(citySQL.as(c))
     }.map(citySQL.apply(_, c.resultName)).list()
 
     // or:
@@ -105,7 +113,7 @@ object ScalikejdbcTests extends App with DbSetup {
   def selectAllLines(): Unit = {
     val ml = metroLineSQL.syntax("ml")
     val p = withSQL {
-      select.from(metroLineSQL as ml)
+      select.from(metroLineSQL.as(ml))
     }.map(metroLineSQL.apply(_, ml.resultName)).list()
 
     runAndLogResults("All lines", p)
@@ -116,7 +124,7 @@ object ScalikejdbcTests extends App with DbSetup {
 
     val c = citySQL.syntax("c")
     val p = withSQL {
-      select.from(citySQL as c).where.gt(c.population, bigLimit)
+      select.from(citySQL.as(c)).where.gt(c.population, bigLimit)
     }.map(citySQL.apply(_, c.resultName)).list()
 
     runAndLogResults("All city names with population over 4M", p)
@@ -128,27 +136,46 @@ object ScalikejdbcTests extends App with DbSetup {
     val (ms, c) = (metroSystemSQL.syntax("ms"), citySQL.syntax("c"))
     val p = withSQL {
       select(ms.result.column("name"), c.result.column("name"), ms.result.dailyRidership)
-        .from(metroSystemSQL as ms).leftJoin(citySQL as c).on(ms.cityId, c.id)
-    }.map(rs => MetroSystemWithCity(rs.string(ms.resultName.name), rs.string(c.resultName.name), rs.int(ms.resultName.dailyRidership)))
-      .list()
+        .from(metroSystemSQL.as(ms))
+        .leftJoin(citySQL.as(c))
+        .on(ms.cityId, c.id)
+    }.map(rs =>
+      MetroSystemWithCity(
+        rs.string(ms.resultName.name),
+        rs.string(c.resultName.name),
+        rs.int(ms.resultName.dailyRidership),
+      )
+    ).list()
 
     runAndLogResults("Metro systems with city names", p)
   }
 
   def selectMetroLinesSortedByStations(): Unit = {
-    case class MetroLineWithSystemCityNames(metroLineName: String, metroSystemName: String, cityName: String, stationCount: Int)
+    case class MetroLineWithSystemCityNames(
+      metroLineName: String,
+      metroSystemName: String,
+      cityName: String,
+      stationCount: Int,
+    )
 
     val (ml, ms, c) = (metroLineSQL.syntax("ml"), metroSystemSQL.syntax("ms"), citySQL.syntax("c"))
     val p = withSQL {
       select(ml.result.column("name"), ms.result.column("name"), c.result.column("name"), ml.result.stationCount)
-        .from(metroLineSQL as ml)
-        .join(metroSystemSQL as ms).on(ml.systemId, ms.id)
-        .join(citySQL as c).on(ms.cityId, c.id)
-        .orderBy(ml.stationCount).desc
-    }
-      .map(rs => MetroLineWithSystemCityNames(rs.string(ml.resultName.name), rs.string(ms.resultName.name),
-        rs.string(c.resultName.name), rs.int(ml.resultName.stationCount)))
-      .list()
+        .from(metroLineSQL.as(ml))
+        .join(metroSystemSQL.as(ms))
+        .on(ml.systemId, ms.id)
+        .join(citySQL.as(c))
+        .on(ms.cityId, c.id)
+        .orderBy(ml.stationCount)
+        .desc
+    }.map(rs =>
+      MetroLineWithSystemCityNames(
+        rs.string(ml.resultName.name),
+        rs.string(ms.resultName.name),
+        rs.string(c.resultName.name),
+        rs.int(ml.resultName.stationCount),
+      )
+    ).list()
 
     runAndLogResults("Metro lines sorted by station count", p)
   }
@@ -158,38 +185,70 @@ object ScalikejdbcTests extends App with DbSetup {
 
     val (ml, ms, c) = (metroLineSQL.syntax("ml"), metroSystemSQL.syntax("ms"), citySQL.syntax("c"))
     val p = withSQL {
-      select(ms.result.column("name"), c.result.column("name"), c.result.column("name"), sqls"count(ml.id) as line_count")
-        .from(metroLineSQL as ml)
-        .join(metroSystemSQL as ms).on(ml.systemId, ms.id)
-        .join(citySQL as c).on(ms.cityId, c.id)
+      select(
+        ms.result.column("name"),
+        c.result.column("name"),
+        c.result.column("name"),
+        sqls"count(ml.id) as line_count",
+      ).from(metroLineSQL.as(ml))
+        .join(metroSystemSQL.as(ms))
+        .on(ml.systemId, ms.id)
+        .join(citySQL.as(c))
+        .on(ms.cityId, c.id)
         .groupBy(ms.id, c.id)
-        .orderBy(sqls"line_count").desc
-    }
-      .map(rs => MetroSystemWithLineCount(rs.string(ms.resultName.name), rs.string(c.resultName.name),
-        rs.int("line_count")))
-      .list()
+        .orderBy(sqls"line_count")
+        .desc
+    }.map(rs =>
+      MetroSystemWithLineCount(rs.string(ms.resultName.name), rs.string(c.resultName.name), rs.int("line_count"))
+    ).list()
 
     runAndLogResults("Metro systems with most lines", p)
   }
 
   def selectCitiesWithSystemsAndLines(): Unit = {
-    case class SystemWithLines(cityId: CityId, cityName: String, population: Int, area: Float, link: Option[String],
-      systemId: MetroSystemId, systemName: String, dailyRidership: Int, lines: Seq[MetroLine])
+    case class SystemWithLines(
+      cityId: CityId,
+      cityName: String,
+      population: Int,
+      area: Float,
+      link: Option[String],
+      systemId: MetroSystemId,
+      systemName: String,
+      dailyRidership: Int,
+      lines: Seq[MetroLine],
+    )
 
-    case class CityWithSystems(id: CityId, name: String, population: Int, area: Float, link: Option[String], systems: Seq[MetroSystemWithLines])
+    case class CityWithSystems(
+      id: CityId,
+      name: String,
+      population: Int,
+      area: Float,
+      link: Option[String],
+      systems: Seq[MetroSystemWithLines],
+    )
     case class MetroSystemWithLines(id: MetroSystemId, name: String, dailyRidership: Int, lines: Seq[MetroLine])
 
     val (ml, ms, c) = (metroLineSQL.syntax("ml"), metroSystemSQL.syntax("ms"), citySQL.syntax("c"))
     val p: SQLToList[SystemWithLines, HasExtractor] = withSQL {
       select
-        .from(metroLineSQL as ml)
-        .join(metroSystemSQL as ms).on(ml.systemId, ms.id)
-        .join(citySQL as c).on(ms.cityId, c.id)
-    }
-      .one(rs => SystemWithLines(CityId(rs.int(c.resultName.id)), rs.string(c.resultName.name), rs.int(c.resultName.population),
-        rs.float(c.resultName.area), rs.stringOpt(c.resultName.link), MetroSystemId(rs.int(ms.resultName.id)), rs.string(ms.resultName.name),
-        rs.int(ms.resultName.dailyRidership), Nil))
-      .toMany(rs => Some(metroLineSQL(rs, ml.resultName)))
+        .from(metroLineSQL.as(ml))
+        .join(metroSystemSQL.as(ms))
+        .on(ml.systemId, ms.id)
+        .join(citySQL.as(c))
+        .on(ms.cityId, c.id)
+    }.one(rs =>
+      SystemWithLines(
+        CityId(rs.int(c.resultName.id)),
+        rs.string(c.resultName.name),
+        rs.int(c.resultName.population),
+        rs.float(c.resultName.area),
+        rs.stringOpt(c.resultName.link),
+        MetroSystemId(rs.int(ms.resultName.id)),
+        rs.string(ms.resultName.name),
+        rs.int(ms.resultName.dailyRidership),
+        Nil,
+      )
+    ).toMany(rs => Some(metroLineSQL(rs, ml.resultName)))
       .map { (cws, mls) => cws.copy(lines = mls.toList) }
       .list()
 
@@ -198,7 +257,9 @@ object ScalikejdbcTests extends App with DbSetup {
       p.apply()
         .groupBy(swl => CityWithSystems(swl.cityId, swl.cityName, swl.population, swl.area, swl.link, Nil))
         .map { case (cws, swls) =>
-          cws.copy(systems = swls.map(swl => MetroSystemWithLines(swl.systemId, swl.systemName, swl.dailyRidership, swl.lines)))
+          cws.copy(systems =
+            swls.map(swl => MetroSystemWithLines(swl.systemId, swl.systemName, swl.dailyRidership, swl.lines))
+          )
         }
         .foreach(println)
     }
@@ -213,11 +274,14 @@ object ScalikejdbcTests extends App with DbSetup {
     val ml = metroLineSQL.syntax("ml")
     val p = withSQL {
       // can't assign to a val, as the [A] is "lost" and causes compilation errors
-      select.from(metroLineSQL as ml)
-        .where(sqls.toAndConditionOpt(
-          minStations.map(ms => sqls.ge(ml.stationCount, ms)),
-          maxStations.map(ms => sqls.le(ml.stationCount, ms))
-        ))
+      select
+        .from(metroLineSQL.as(ml))
+        .where(
+          sqls.toAndConditionOpt(
+            minStations.map(ms => sqls.ge(ml.stationCount, ms)),
+            maxStations.map(ms => sqls.le(ml.stationCount, ms)),
+          )
+        )
         .orderBy(ml.stationCount)
         .append(if (sortDesc) sqls"desc" else sqls"asc")
     }.map(metroLineSQL.apply(_, ml.resultName)).list()
@@ -229,7 +293,7 @@ object ScalikejdbcTests extends App with DbSetup {
     def deleteCity(id: CityId)(implicit session: DBSession): Int = {
       withSQL {
         val c = citySQL.syntax("c")
-        delete.from(citySQL as c).where.eq(c.id, id.id)
+        delete.from(citySQL.as(c)).where.eq(c.id, id.id)
       }.update().apply()
     }
 
