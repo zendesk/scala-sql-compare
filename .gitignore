@@ -2,3 +2,5 @@
 target
 .metals/
 metals.sbt
+.bsp/
+.bloop/
