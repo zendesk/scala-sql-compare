@@ -6,7 +6,7 @@ name := "scala-sql-compare"
 lazy val commonSettings = Seq(
   organization := "com.softwaremill",
   version := "1.0-SNAPSHOT",
-  scalaVersion := "2.12.15",
+  scalaVersion := "2.13.8",
 )
 
 lazy val scalaSqlCompare = (project in file("."))
