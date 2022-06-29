@@ -11,7 +11,9 @@ object ScalikejdbcTests extends App with DbSetup {
   ConnectionPool.add(Symbol("tests"), "jdbc:postgresql:sql_compare", "sqltester", "testpass")
   def db: NamedDB = NamedDB(Symbol("tests"))
 
-  GlobalSettings.loggingSQLAndTime = LoggingSQLAndTimeSettings(enabled = true, singleLineMode = true, logLevel = Symbol("INFO"))
+  GlobalSettings.loggingSQLAndTime = LoggingSQLAndTimeSettings(enabled = true, singleLineMode = true, logLevel = "INFO")
+
+  implicit val session = AutoSession
 
   //
 
@@ -84,7 +86,7 @@ object ScalikejdbcTests extends App with DbSetup {
           c.area -> area,
           c.link -> link,
         )
-    }.updateAndReturnGeneratedKey().apply() // generated ids are assumed to be Long-s
+    }.updateAndReturnGeneratedKey()
 
     City(CityId(id.toInt), name, population, area, link)
   }
@@ -101,7 +103,7 @@ object ScalikejdbcTests extends App with DbSetup {
     val c = citySQL.syntax("c")
     val p = withSQL {
       select.from(citySQL.as(c))
-    }.map(citySQL.apply(_, c.resultName)).list()
+    }.map(citySQL.apply(_, c.resultName)).list
 
     // or:
     // val p = sql"select * from city".map(rs => City(CityId(rs.get[Int]("id")), rs.get[String]("name"),
@@ -114,7 +116,7 @@ object ScalikejdbcTests extends App with DbSetup {
     val ml = metroLineSQL.syntax("ml")
     val p = withSQL {
       select.from(metroLineSQL.as(ml))
-    }.map(metroLineSQL.apply(_, ml.resultName)).list()
+    }.map(metroLineSQL.apply(_, ml.resultName)).list
 
     runAndLogResults("All lines", p)
   }
@@ -125,7 +127,7 @@ object ScalikejdbcTests extends App with DbSetup {
     val c = citySQL.syntax("c")
     val p = withSQL {
       select.from(citySQL.as(c)).where.gt(c.population, bigLimit)
-    }.map(citySQL.apply(_, c.resultName)).list()
+    }.map(citySQL.apply(_, c.resultName)).list
 
     runAndLogResults("All city names with population over 4M", p)
   }
@@ -145,7 +147,7 @@ object ScalikejdbcTests extends App with DbSetup {
         rs.string(c.resultName.name),
         rs.int(ms.resultName.dailyRidership),
       )
-    ).list()
+    ).list
 
     runAndLogResults("Metro systems with city names", p)
   }
@@ -175,7 +177,7 @@ object ScalikejdbcTests extends App with DbSetup {
         rs.string(c.resultName.name),
         rs.int(ml.resultName.stationCount),
       )
-    ).list()
+    ).list
 
     runAndLogResults("Metro lines sorted by station count", p)
   }
@@ -294,7 +296,7 @@ object ScalikejdbcTests extends App with DbSetup {
       withSQL {
         val c = citySQL.syntax("c")
         delete.from(citySQL.as(c)).where.eq(c.id, id.id)
-      }.update().apply()
+      }.update()
     }
 
     println("Transactions")
