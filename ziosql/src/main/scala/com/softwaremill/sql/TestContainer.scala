@@ -4,6 +4,7 @@ import com.dimafeng.testcontainers.SingleContainer
 import com.dimafeng.testcontainers.PostgreSQLContainer
 import org.testcontainers.utility.DockerImageName
 import zio._
+import zio.managed._
 import org.flywaydb.core.Flyway
 
 object TestContainer {
