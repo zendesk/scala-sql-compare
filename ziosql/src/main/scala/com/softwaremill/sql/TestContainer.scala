@@ -23,8 +23,7 @@ object TestContainer {
           dockerImageNameOverride = Option(imageName).map(DockerImageName.parse)
         )
         c.start()
-        val flyway = new Flyway()
-        flyway.setDataSource(c.container.getJdbcUrl(), c.container.getUsername(), c.container.getPassword())
+        val flyway = Flyway.configure().dataSource(c.container.getJdbcUrl(), c.container.getUsername(), c.container.getPassword()).load()
         flyway.migrate()
         c
       }
