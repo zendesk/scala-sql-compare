@@ -10,7 +10,7 @@ object DoobieTests extends App with DbSetup {
   dbSetup()
 
   val xa =
-    Transactor.fromDriverManager[IO]("org.postgresql.Driver", "jdbc:postgresql:sql_compare", "postgres", "postgres")
+    Transactor.fromDriverManager[IO]("org.postgresql.Driver", "jdbc:postgresql:sql_compare", "sqltester", "testpass")
 
   implicit val trackTypeMeta: Meta[TrackType] = Meta[Int].timap(TrackType.byIdOrThrow)(_.id)
 

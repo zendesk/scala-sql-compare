@@ -278,7 +278,7 @@ trait Queries extends Schema {
 object SlickTests extends App with Schema with DbSetup with Queries {
   dbSetup()
 
-  val db = Database.forURL(connectionString, user = "postgres", password = "postgres", driver = "org.postgresql.Driver")
+  val db = Database.forURL(connectionString, user = "sqltester", password = "testpass", driver = "org.postgresql.Driver")
   val jdbcProfile = PostgresProfile
 
   try {
