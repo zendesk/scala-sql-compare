@@ -197,7 +197,7 @@ trait Queries extends Schema {
     case class MetroSystemWithCity(metroSystemName: String, cityName: String, dailyRidership: Int)
 
     implicit val getMetroSystemWithCityResult: GetResult[MetroSystemWithCity] =
-      GetResult(r => MetroSystemWithCity(r.nextString, r.nextString, r.nextInt))
+      GetResult(r => MetroSystemWithCity(r.nextString(), r.nextString(), r.nextInt()))
 
     val query = sql"""SELECT ms.name, c.name, ms.daily_ridership
                              FROM metro_system as ms
