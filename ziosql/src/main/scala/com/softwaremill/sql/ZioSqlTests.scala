@@ -10,14 +10,14 @@ import org.flywaydb.core.Flyway
 import java.io.IOException
 import java.util.concurrent.TimeUnit
 
-trait TableModel extends PostgresModule { 
+trait TableModel extends PostgresModule {
 
     import ColumnSet._
     import ColumnSetAspect._
 
     // Mapping
 
-    val city = (int("id") ++ string("name") ++ 
+    val city = (int("id") ++ string("name") ++
         int("population") ++ float("area") ++ (string("link") @@ nullable)).table("city")
 
     val (cityId, cityName, population, area, link) = city.columns
@@ -62,7 +62,7 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
     import AggregationDef._
     import Ordering._
 
-    def run = 
+    def run =
         (for {
             allCities                  <- selectAllCities
             _                          <- ZIO.logInfo(s"All cities: \n ${allCities.mkString("\n")}")
@@ -82,30 +82,30 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
             _                          <- ZIO.logInfo(s"Rendered complex query: \n ${complexQuerySql} \n")
             _                          <- ZIO.logInfo(s"Rendered insert query : \n ${insertSql} \n")
         } yield ()).provideCustomLayer(driverLayer)
-        
+
 
     // SIMPLE
 
     /**
       * select id, name, population, area, link from city where population > $limit
       */
-    def citiesBiggerThan(people: Int) = 
+    def citiesBiggerThan(people: Int) =
         select(cityId ++ cityName ++ population ++ area ++ link)
             .from(city)
             .where(population > people)
             .to {
                 case (id, name, pop, area, link) =>
                     City(CityId(id), name, pop, area, link)
-            }   
+            }
 
-    def executeCities(cityQuery: Read[City]) = 
+    def executeCities(cityQuery: Read[City]) =
         execute(cityQuery)
             .runCollect
             .map(_.toList)
 
     val result = executeCities(citiesBiggerThan(4000000))
 
-    // COMPLEX            
+    // COMPLEX
 
     /**
         SELECT ms.name, c.name, COUNT(ml.id) as line_count
@@ -115,7 +115,7 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
         GROUP BY ms.name, c.name
         ORDER BY line_count DESC
     */
-    val lineCount = (Count(metroLineId) as "line_count")              
+    val lineCount = (Count(metroLineId) as "line_count")
 
     val complexQuery = select(metroLineName ++ cityName ++ lineCount)
         .from(metroLine
@@ -136,14 +136,16 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
     val minStationsQuery = minStations.map(m => stationCount >= m).getOrElse(Expr.literal(true))
     val maxStationsQuery = maxStations.map(m => trackType <= m).getOrElse(Expr.literal(true))
 
-    val ord = 
-        if (sortDesc) 
-            stationCount.desc 
-        else 
+    val ord =
+        if (sortDesc)
+            stationCount.desc
+        else
             stationCount.asc
 
+
+    import scala.language.existentials
     val whereExpr =
-        minStationsQuery && maxStationsQuery
+      minStationsQuery && maxStationsQuery
 
     val finalQuery = base.where(whereExpr).orderBy(ord)
 
@@ -154,7 +156,7 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
 
     // DELETE
 
-    def deleteCity(id: CityId) = 
+    def deleteCity(id: CityId) =
         deleteFrom(city)
             .where(cityId === id.id)
 
@@ -168,7 +170,7 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
     } yield (rows)
 
     val deletedRows: ZManaged[SqlDriver, Exception, Int] = execute(transaction)
-        
+
     // render to PLAIN SQL
 
     val complexQuerySql = renderRead(complexQuery)
@@ -196,7 +198,7 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
                 )
             .to(MetroSystemWithCity.tupled)
 
-        
+
 
         execute(query)
             .runCollect
@@ -214,13 +216,13 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
                 .on(cityIdFk === cityId))
             .orderBy(Desc(stationCount))
             .to(MetroLineWithSystemCityNames.tupled)
-                
+
         execute(query)
             .runCollect
     }
 
-    final case class MetroSystemWithLineCount(metroSystemName: String, cityName: String, lineCount: Long)        
-    
+    final case class MetroSystemWithLineCount(metroSystemName: String, cityName: String, lineCount: Long)
+
     val selectMetroSystemsWithMostLines: ZIO[SqlDriver, Throwable, Chunk[MetroSystemWithLineCount]]  = {
         val query = select(metroLineName ++ cityName ++ Count(metroLineId))
             .from(metroLine
@@ -239,25 +241,25 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
 
     val selectCitiesWithSystemsAndLines:  ZIO[SqlDriver, Throwable, List[CityWithSystems]] = {
 
-        val query = select(cityId ++ cityName ++ population ++ area ++ link ++ 
-                            metroSystemId ++ cityIdFk ++ metroSystemName ++ dailyRidership ++ 
+        val query = select(cityId ++ cityName ++ population ++ area ++ link ++
+                            metroSystemId ++ cityIdFk ++ metroSystemName ++ dailyRidership ++
                             metroLineId ++ systemId ++ metroLineName ++ stationCount ++ trackType)
                     .from(metroLine
                         .join(metroSystem).on(metroSystemId === systemId)
                         .join(city).on(cityIdFk === cityId))
                     .to {
-                        case (cityId, cityName, population, area, link, 
-                            metroSystemId, cityIdFk, metroSystemName, dailyRidership, 
+                        case (cityId, cityName, population, area, link,
+                            metroSystemId, cityIdFk, metroSystemName, dailyRidership,
                             metroLineId, systemId, metroLineName, stationCount, trackType) =>
-                                (City(CityId(cityId), cityName, population, area, link), 
-                                 MetroSystem(MetroSystemId(metroSystemId), CityId(cityIdFk), metroLineName, dailyRidership), 
+                                (City(CityId(cityId), cityName, population, area, link),
+                                 MetroSystem(MetroSystemId(metroSystemId), CityId(cityIdFk), metroLineName, dailyRidership),
                                  MetroLine(MetroLineId(metroLineId), MetroSystemId(systemId), metroLineName, stationCount, TrackType.byIdOrThrow(trackType)))
                     }
 
         execute(query)
             .runCollect
             .map(l => l.groupBy(_._1).map {
-                case (c, citiesSystemsLines) => 
+                case (c, citiesSystemsLines) =>
                     val systems = citiesSystemsLines.groupBy(_._2)
                         .map { case (s, systemsLines) =>
                             MetroSystemWithLines(s.id, s.name, s.dailyRidership, systemsLines.map(_._3))

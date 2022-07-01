@@ -6,7 +6,12 @@ name := "scala-sql-compare"
 lazy val commonSettings = Seq(
   organization := "com.softwaremill",
   version := "1.0-SNAPSHOT",
-  scalaVersion := "2.12.15",
+  scalaVersion := "2.13.8",
+  scalacOptions := Seq(
+    "-deprecation",
+    "-encoding", "utf8",
+    "-feature"
+  )
 )
 
 lazy val scalaSqlCompare = (project in file("."))
@@ -36,7 +41,7 @@ lazy val doobie = (project in file("doobie"))
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= Seq(
-      "org.tpolecat" %% "doobie-postgres" % "1.0.0-RC1"
+      "org.tpolecat" %% "doobie-postgres" % "1.0.0-RC2"
     )
   )
   .dependsOn(common)
@@ -45,7 +50,7 @@ lazy val quill = (project in file("quill"))
   .settings(commonSettings)
   .settings(
     libraryDependencies ++= Seq(
-      "ch.qos.logback" % "logback-classic" % "1.2.3",
+      "ch.qos.logback" % "logback-classic" % "1.2.11",
       "io.getquill" %% "quill-async-postgres" % "3.12.0",
     )
   )

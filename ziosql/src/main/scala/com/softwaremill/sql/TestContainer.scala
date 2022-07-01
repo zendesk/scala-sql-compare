@@ -9,26 +9,25 @@ import org.flywaydb.core.Flyway
 object TestContainer {
 
   def container[C <: SingleContainer[_]: Tag](c: C): ZLayer[Any, Throwable, C] =
-    ZManaged.make {
-      ZIO.effectBlocking {
+    ZManaged.acquireReleaseWith {
+      ZIO.attemptBlocking {
         c.start()
         c
       }
-    }(container => ZIO.effectBlocking(container.stop()).orDie).toLayer
+    }(container => ZIO.attemptBlocking(container.stop()).orDie).toLayer
 
   def postgres(imageName: String = "postgres:alpine"): ZManaged[Any, Throwable, PostgreSQLContainer] =
-    ZManaged.make {
-      ZIO.effectBlocking {
+    ZManaged.acquireReleaseWith {
+      ZIO.attemptBlocking {
         val c = new PostgreSQLContainer(
           dockerImageNameOverride = Option(imageName).map(DockerImageName.parse)
         )
         c.start()
-        val flyway = new Flyway()
-        flyway.setDataSource(c.container.getJdbcUrl(), c.container.getUsername(), c.container.getPassword())
+        val flyway = Flyway.configure().dataSource(c.container.getJdbcUrl(), c.container.getUsername(), c.container.getPassword()).load()
         flyway.migrate()
         c
       }
     } { container =>
-      ZIO.effectBlocking(container.stop()).orDie
+      ZIO.attemptBlocking(container.stop()).orDie
     }
 }

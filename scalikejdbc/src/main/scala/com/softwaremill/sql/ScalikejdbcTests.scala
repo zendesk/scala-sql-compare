@@ -8,10 +8,10 @@ import scalikejdbc._
 object ScalikejdbcTests extends App with DbSetup {
   dbSetup()
 
-  ConnectionPool.add('tests, "jdbc:postgresql:sql_compare", "postgres", "postgres")
-  def db: NamedDB = NamedDB('tests)
+  ConnectionPool.add(Symbol("tests"), "jdbc:postgresql:sql_compare", "sqltester", "testpass")
+  def db: NamedDB = NamedDB(Symbol("tests"))
 
-  GlobalSettings.loggingSQLAndTime = LoggingSQLAndTimeSettings(enabled = true, singleLineMode = true, logLevel = 'INFO)
+  GlobalSettings.loggingSQLAndTime = LoggingSQLAndTimeSettings(enabled = true, singleLineMode = true, logLevel = Symbol("INFO"))
 
   //
 
