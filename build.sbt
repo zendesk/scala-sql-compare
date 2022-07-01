@@ -7,6 +7,11 @@ lazy val commonSettings = Seq(
   organization := "com.softwaremill",
   version := "1.0-SNAPSHOT",
   scalaVersion := "2.13.8",
+  scalacOptions := Seq(
+    "-deprecation",
+    "-encoding", "utf8",
+    "-feature"
+  )
 )
 
 lazy val scalaSqlCompare = (project in file("."))
