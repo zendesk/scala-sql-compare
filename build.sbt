@@ -78,6 +78,9 @@ lazy val ziosql = (project in file("ziosql"))
       "dev.zio" %% "zio-schema-derivation" % "0.2.0",
       "org.postgresql" % "postgresql" % "42.4.0" % Compile,
       "com.dimafeng" %% "testcontainers-scala-postgresql" % "0.40.8",
+    ),
+    dependencyOverrides ++= Seq(
+      "dev.zio" %% "zio-test" % "2.0.0",
     )
   )
   .dependsOn(common)
