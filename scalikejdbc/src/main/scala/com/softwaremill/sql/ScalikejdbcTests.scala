@@ -77,7 +77,7 @@ object ScalikejdbcTests extends App with DbSetup {
     // Or:
 
     val c = citySQL.column
-    val id = withSQL {
+    val id: Long = withSQL {
       insert
         .into(citySQL)
         .namedValues(
@@ -86,7 +86,7 @@ object ScalikejdbcTests extends App with DbSetup {
           c.area -> area,
           c.link -> link,
         )
-    }.updateAndReturnGeneratedKey()
+    }.updateAndReturnGeneratedKey() // generated ids are assumed to be Long-s
 
     City(CityId(id.toInt), name, population, area, link)
   }
@@ -100,8 +100,8 @@ object ScalikejdbcTests extends App with DbSetup {
   }
 
   def selectAll(): Unit = {
-    val c = citySQL.syntax("c")
-    val p = withSQL {
+    val c: QuerySQLSyntaxProvider[SQLSyntaxSupport[City], City] = citySQL.syntax("c")
+    val p: SQLToList[City, HasExtractor] = withSQL {
       select.from(citySQL.as(c))
     }.map(citySQL.apply(_, c.resultName)).list
 
@@ -114,7 +114,7 @@ object ScalikejdbcTests extends App with DbSetup {
 
   def selectAllLines(): Unit = {
     val ml = metroLineSQL.syntax("ml")
-    val p = withSQL {
+    val p: SQLToList[MetroLine, HasExtractor] = withSQL {
       select.from(metroLineSQL.as(ml))
     }.map(metroLineSQL.apply(_, ml.resultName)).list
 
@@ -125,7 +125,7 @@ object ScalikejdbcTests extends App with DbSetup {
     val bigLimit = 4000000
 
     val c = citySQL.syntax("c")
-    val p = withSQL {
+    val p: SQLToList[City, HasExtractor] = withSQL {
       select.from(citySQL.as(c)).where.gt(c.population, bigLimit)
     }.map(citySQL.apply(_, c.resultName)).list
 
@@ -136,7 +136,7 @@ object ScalikejdbcTests extends App with DbSetup {
     case class MetroSystemWithCity(metroSystemName: String, cityName: String, dailyRidership: Int)
 
     val (ms, c) = (metroSystemSQL.syntax("ms"), citySQL.syntax("c"))
-    val p = withSQL {
+    val p: SQLToList[MetroSystemWithCity, HasExtractor] = withSQL {
       select(ms.result.column("name"), c.result.column("name"), ms.result.dailyRidership)
         .from(metroSystemSQL.as(ms))
         .leftJoin(citySQL.as(c))
@@ -161,7 +161,7 @@ object ScalikejdbcTests extends App with DbSetup {
     )
 
     val (ml, ms, c) = (metroLineSQL.syntax("ml"), metroSystemSQL.syntax("ms"), citySQL.syntax("c"))
-    val p = withSQL {
+    val p: SQLToList[MetroLineWithSystemCityNames, HasExtractor] = withSQL {
       select(ml.result.column("name"), ms.result.column("name"), c.result.column("name"), ml.result.stationCount)
         .from(metroLineSQL.as(ml))
         .join(metroSystemSQL.as(ms))
@@ -186,7 +186,7 @@ object ScalikejdbcTests extends App with DbSetup {
     case class MetroSystemWithLineCount(metroSystemName: String, cityName: String, lineCount: Int)
 
     val (ml, ms, c) = (metroLineSQL.syntax("ml"), metroSystemSQL.syntax("ms"), citySQL.syntax("c"))
-    val p = withSQL {
+    val p: SQLToList[MetroSystemWithLineCount, HasExtractor] = withSQL {
       select(
         ms.result.column("name"),
         c.result.column("name"),
@@ -202,7 +202,7 @@ object ScalikejdbcTests extends App with DbSetup {
         .desc
     }.map(rs =>
       MetroSystemWithLineCount(rs.string(ms.resultName.name), rs.string(c.resultName.name), rs.int("line_count"))
-    ).list()
+    ).list
 
     runAndLogResults("Metro systems with most lines", p)
   }
@@ -252,7 +252,7 @@ object ScalikejdbcTests extends App with DbSetup {
       )
     ).toMany(rs => Some(metroLineSQL(rs, ml.resultName)))
       .map { (cws, mls) => cws.copy(lines = mls.toList) }
-      .list()
+      .list
 
     println("Cities with list of systems with list of lines")
     db.readOnly { implicit session =>
@@ -274,7 +274,7 @@ object ScalikejdbcTests extends App with DbSetup {
     val sortDesc: Boolean = true
 
     val ml = metroLineSQL.syntax("ml")
-    val p = withSQL {
+    val p: SQLToList[MetroLine, HasExtractor] = withSQL {
       // can't assign to a val, as the [A] is "lost" and causes compilation errors
       select
         .from(metroLineSQL.as(ml))
@@ -286,7 +286,7 @@ object ScalikejdbcTests extends App with DbSetup {
         )
         .orderBy(ml.stationCount)
         .append(if (sortDesc) sqls"desc" else sqls"asc")
-    }.map(metroLineSQL.apply(_, ml.resultName)).list()
+    }.map(metroLineSQL.apply(_, ml.resultName)).list
 
     runAndLogResults("Lines constrained dynamically", p)
   }
