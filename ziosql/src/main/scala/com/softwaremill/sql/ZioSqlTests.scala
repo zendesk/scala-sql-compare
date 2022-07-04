@@ -2,6 +2,7 @@ package com.softwaremill.sql
 
 import zio.sql.postgresql.PostgresModule
 import zio._
+import zio.managed._
 import zio.stream._
 import zio.sql.ConnectionPoolConfig
 import zio.sql.ConnectionPool
@@ -55,7 +56,6 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
     final lazy val driverLayer = ZLayer.make[SqlDriver](
         poolConfigLayer,
         ConnectionPool.live,
-        Clock.live,
         SqlDriver.live
     )
 
@@ -81,7 +81,7 @@ object ZioSqlTests extends ZIOAppDefault with TableModel {
             _                          <- ZIO.logInfo(s"Rows deleted: ${rows}")
             _                          <- ZIO.logInfo(s"Rendered complex query: \n ${complexQuerySql} \n")
             _                          <- ZIO.logInfo(s"Rendered insert query : \n ${insertSql} \n")
-        } yield ()).provideCustomLayer(driverLayer)
+        } yield ()).provideLayer(driverLayer)
 
 
     // SIMPLE
